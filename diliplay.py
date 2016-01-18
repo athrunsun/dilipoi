@@ -10,15 +10,41 @@ DILIDILI_DOMAIN_NAME = 'www.dilidili.com'
 DILIDILI_BASE_URL = "http://{0}/".format(DILIDILI_DOMAIN_NAME)
 DILIDILI_VEDIO_URL_FORMAT = DILIDILI_BASE_URL + "watch/{0}/"
 
-def extract_iframe_url(vid):
-    headers = {'User-Agent': USER_AGENT, 'Referer': DILIDILI_BASE_URL, 'Host': DILIDILI_DOMAIN_NAME}
-    r = requests.get(DILIDILI_VEDIO_URL_FORMAT.format(vid), headers = headers)
-    regex = re.compile('<iframe.*src=\\"([^\\"]+)\\"[^>]*></iframe>')
-    #regex = re.compile('<iframe(.*)></iframe>')
-    print(r.text)
-    regex_match = regex.match(r.text)
-    print(regex_match.group(1))
-    print(regex_match.group(2))
+TV_PLAYER_DOMAIN_NAME = 'player.005.tv:60000'
+
+# {"letvcloud":3,"bilibili":3,"youku":3}
+COOKIE_HD = '%7B%22letvcloud%22%3A3%2C%22bilibili%22%3A3%2C%22youku%22%3A3%7D'
+
+class DiliPlay(object):
+    def __init__(self, vid):
+        self.vedio_url = DILIDILI_VEDIO_URL_FORMAT.format(vid)
+
+    def extract_iframe_url(self):
+        headers = {
+            'User-Agent': USER_AGENT, 
+            'Referer': DILIDILI_BASE_URL, 
+            'Host': DILIDILI_DOMAIN_NAME
+        }
+
+        r = requests.get(self.vedio_url, headers = headers)
+        regex = re.compile(r'<iframe.*src="([^"]+)"[^>]*></iframe>')
+        regex_match = regex.search(r.text)
+        return regex_match.group(1)
+
+    def extract_parse_url_from_iframe_html_content(self, iframe_url):
+        headers = {
+            'User-Agent': USER_AGENT, 
+            'Referer': self.vedio_url, 
+            'Host': TV_PLAYER_DOMAIN_NAME,
+            'Connection': 'keep-alive',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Encoding': 'gzip, deflate, sdch',
+            'Accept-Language': 'zh-CN,zh;q=0.8,en-US;q=0.6,en;q=0.4'
+        }
+
+        r = requests.get(iframe_url, headers = headers)
+        print(r.text)
 
 if __name__ == '__main__':
-    extract_iframe_url(26780)
+    diliplay = DiliPlay(26780)
+    diliplay.extract_parse_url_from_iframe_html_content(diliplay.extract_iframe_url())
