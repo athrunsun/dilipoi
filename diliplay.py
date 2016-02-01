@@ -4,6 +4,8 @@
 import requests
 import json
 import re
+import logging
+import subprocess
 from lxml import etree
 
 USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Ubuntu Chromium/47.0.2526.106 Chrome/47.0.2526.106 Safari/537.36'
@@ -21,11 +23,14 @@ COOKIE_HD = '%7B%22letvcloud%22%3A3%2C%22bilibili%22%3A3%2C%22youku%22%3A3%7D'
 
 class DiliPlay(object):
     def __init__(self, dili_video_id):
-        self.vedio_url = DILIDILI_VEDIO_URL_FORMAT.format(dili_video_id)
+        self.dili_video_url = DILIDILI_VEDIO_URL_FORMAT.format(dili_video_id)
+        self.video_urls = []
+        self.video_title = None
 
     def play(self):
         self.extract_iframe_url()
-        self.fetch_ckplayer_playlist(self.extract_parse_url_from_iframe_html_content())
+        self.fetch_ckplayer_playlist_and_extract_videos(self.extract_parse_url_from_iframe_html_content())
+        self.launch_mpv()
 
     def extract_iframe_url(self):
         headers = {
@@ -34,18 +39,27 @@ class DiliPlay(object):
             'Host': DILIDILI_DOMAIN_NAME
         }
 
-        r = requests.get(self.vedio_url, headers = headers)
+        r = requests.get(self.dili_video_url, headers = headers)
+
+        # Extract title
+        regex = re.compile(r'<title>(.+)</title>')
+        regex_match = regex.search(r.text)
+        self.video_title = regex_match.group(1)
+        print('Extract title:' + self.video_title)
+
+        # Extract iframe URL
         regex = re.compile(r'<iframe.*src="([^"]+)"[^>]*></iframe>')
         regex_match = regex.search(r.text)
         iframe_url = regex_match.group(1)
         print("iframe_url:" + iframe_url)
         self.iframe_url = iframe_url
+
         return iframe_url
 
     def extract_parse_url_from_iframe_html_content(self):
         headers = {
             'User-Agent': USER_AGENT, 
-            'Referer': self.vedio_url, 
+            'Referer': self.dili_video_url, 
             'Host': CK_PLAYER_DOMAIN_NAME,
             'Connection': 'keep-alive',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
@@ -71,25 +85,31 @@ class DiliPlay(object):
         sign = sign_regex_match.group(1)
         print("sign:" + sign)
 
-        raw_parse_url_regex = re.compile(r'url=\'(/parse\.php\?.*tmsign=([\w|\d]+))\';')
+        ulk_regex = re.compile(r'var\s+ulk="([^"]+)"')
+        ulk_regex_match = ulk_regex.search(r.text)
+        ulk = ulk_regex_match.group(1)
+        print("ulk:" + ulk)
+
+        raw_parse_url_regex = re.compile(r'url=\'(/parse\.php\?.*tmsign=([\w|\d]+))\'.*;')
         raw_parse_url_regex_match = raw_parse_url_regex.search(r.text)
         raw_parse_url = raw_parse_url_regex_match.group(1)
         tmsign = raw_parse_url_regex_match.group(2)
         print("raw_parse_url:" + raw_parse_url)
         print("tmsign:" + tmsign)
 
-        parse_url = "{ck_base_url}/parse.php?xmlurl=null&type={arg_type}&vid={arg_vid}&hd=3&sign={arg_sign}&tmsign={arg_tmsign}".format(\
+        parse_url = "{ck_base_url}/parse.php?xmlurl=null&type={arg_type}&vid={arg_vid}&hd=3&sign={arg_sign}&tmsign={arg_tmsign}&userlink={arg_ulk}".format(\
             ck_base_url = CK_PLAYER_BASE_URL,\
             arg_type = vtype,\
             arg_vid = vid,\
             arg_sign = sign,\
-            arg_tmsign = tmsign)
+            arg_tmsign = tmsign,\
+            arg_ulk = ulk)
 
         print("parse_url:" + parse_url)
 
         return parse_url
 
-    def fetch_ckplayer_playlist(self, parse_url):
+    def fetch_ckplayer_playlist_and_extract_videos(self, parse_url):
         headers = {
             'Host': CK_PLAYER_DOMAIN_NAME,
             'Connection': 'keep-alive',
@@ -108,7 +128,40 @@ class DiliPlay(object):
         for video_element in playlist_xml_tree.findall(".//video"):
             video_url = video_element.find("./file").text
             print("video_url:" + video_url)
+            self.video_urls.append(video_url)
+
+    def launch_mpv(self):
+        command_line = ['mpv', '--http-header-fields', 'User-Agent: ' + USER_AGENT]
+        command_line += ['--force-media-title', self.video_title]
+
+        if len(self.video_urls) > 1:
+            command_line += ['--merge-files']
+
+        command_line += ['--']
+        command_line += self.video_urls
+        player_process = subprocess.Popen(command_line)
+
+        try:
+            player_process.wait()
+        except KeyboardInterrupt:
+            logging.info('Terminating media player...')
+            try:
+                player_process.terminate()
+                try:
+                    player_process.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    logging.info('Killing media player by force...')
+                    player_process.kill()
+            except Exception:
+                pass
+            raise
+        
+        return player_process.returncode
+
 
 if __name__ == '__main__':
-    diliplay = DiliPlay(27613)
+    #diliplay = DiliPlay(27613)
+    #diliplay = DiliPlay(28362)
+    #diliplay = DiliPlay(28242)
+    diliplay = DiliPlay(27130)
     diliplay.play()
