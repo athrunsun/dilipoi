@@ -1,12 +1,20 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
 # http://stackoverflow.com/questions/16867347/step-by-step-debugging-with-ipython
 # import ipdb; ipdb.set_trace()
 
+import sys
+if sys.version_info < (3, 0):
+    sys.stderr.write('ERROR: Python 3.0 or newer version is required.\n')
+    sys.exit(1)
+#import argparse
 import requests
 import json
 import re
 import logging
 import subprocess
-from lxml import etree
+import xml.etree.ElementTree as ET
 
 USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Ubuntu Chromium/47.0.2526.106 Chrome/47.0.2526.106 Safari/537.36'
 FLASH_HEADER = 'ShockwaveFlash/11.2.999.999'
@@ -36,11 +44,16 @@ class DiliPlay(object):
         headers = {
             'User-Agent': USER_AGENT, 
             'Referer': DILIDILI_BASE_URL, 
-            'Host': DILIDILI_DOMAIN_NAME
+            'Host': DILIDILI_DOMAIN_NAME,
+            'Connection': 'keep-alive',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Encoding': 'gzip, deflate, sdch',
+            'Accept-Language': 'zh-CN,zh;q=0.8,en-US;q=0.6,en;q=0.4'
         }
 
-        r = requests.get(self.dili_video_url, headers = headers)
-
+        r = requests.get(self.dili_video_url, headers=headers)
+        r.encoding = 'utf-8'
+        
         # Extract title
         regex = re.compile(r'<title>(.+)</title>')
         regex_match = regex.search(r.text)
@@ -123,7 +136,7 @@ class DiliPlay(object):
 
         r = requests.get(parse_url, headers = headers)
         print(r.text)
-        playlist_xml_tree = etree.fromstring(r.text)
+        playlist_xml_tree = ET.fromstring(r.text)
 
         for video_element in playlist_xml_tree.findall(".//video"):
             video_url = video_element.find("./file").text
@@ -160,8 +173,24 @@ class DiliPlay(object):
 
 
 if __name__ == '__main__':
-    #diliplay = DiliPlay(27613)
-    #diliplay = DiliPlay(28362)
-    #diliplay = DiliPlay(28242)
-    diliplay = DiliPlay(27130)
+    [print(arg) for arg in sys.argv]
+    raw_dili_video_url = sys.argv[1]
+    #logging.basicConfig(format='%(levelname)s: %(message)s', level=logging.DEBUG if args.verbose else logging.INFO)
+    dili_video_id_regex = re.compile(r'[http://]*[www\.]*dilidili\.com/watch/([\d]+)')
+    dili_video_id_regex_match = dili_video_id_regex.search(raw_dili_video_url)
+    dili_video_id = None
+
+    if dili_video_id_regex_match != None:
+        dili_video_id = dili_video_id_regex_match.group(1)
+        logging.debug("dili_video_id:" + dili_video_id)
+    else:
+        dili_video_id_regex = re.compile(r'[\d]+')
+        dili_video_id_regex_match = dili_video_id_regex.match(raw_dili_video_url)
+        if dili_video_id_regex_match == None:
+            raise Exception('Wrong video url/id format:' + raw_dili_video_url)
+        else:
+            dili_video_id = dili_video_id_regex_match.group(0)
+
+    #diliplay = DiliPlay(27130)
+    diliplay = DiliPlay(dili_video_id)
     diliplay.play()
