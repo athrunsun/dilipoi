@@ -77,7 +77,8 @@ class DiliPlay(object):
             'Connection': 'keep-alive',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
             'Accept-Encoding': 'gzip, deflate, sdch',
-            'Accept-Language': 'zh-CN,zh;q=0.8,en-US;q=0.6,en;q=0.4'
+            'Accept-Language': 'zh-CN,zh;q=0.8,en-US;q=0.6,en;q=0.4',
+            'Cookie': 'hd=' + COOKIE_HD
         }
 
         r = requests.get(self.iframe_url, headers = headers)
@@ -100,8 +101,11 @@ class DiliPlay(object):
 
         ulk_regex = re.compile(r'var\s+ulk="([^"]+)"')
         ulk_regex_match = ulk_regex.search(r.text)
-        ulk = ulk_regex_match.group(1)
-        print("ulk:" + ulk)
+        ulk = None
+
+        if ulk_regex_match != None:
+            ulk = ulk_regex_match.group(1)
+            print("ulk:" + ulk)
 
         raw_parse_url_regex = re.compile(r'url=\'(/parse\.php\?.*tmsign=([\w|\d]+))\'.*;')
         raw_parse_url_regex_match = raw_parse_url_regex.search(r.text)
@@ -110,13 +114,23 @@ class DiliPlay(object):
         print("raw_parse_url:" + raw_parse_url)
         print("tmsign:" + tmsign)
 
-        parse_url = "{ck_base_url}/parse.php?xmlurl=null&type={arg_type}&vid={arg_vid}&hd=3&sign={arg_sign}&tmsign={arg_tmsign}&userlink={arg_ulk}".format(\
+        # parse_url = "{ck_base_url}/parse.php?xmlurl=null&type={arg_type}&vid={arg_vid}&hd=3&sign={arg_sign}&tmsign={arg_tmsign}&userlink={arg_ulk}".format(\
+        #     ck_base_url = CK_PLAYER_BASE_URL,\
+        #     arg_type = vtype,\
+        #     arg_vid = vid,\
+        #     arg_sign = sign,\
+        #     arg_tmsign = tmsign,\
+        #     arg_ulk = ulk)
+
+        parse_url = "{ck_base_url}/parse.php?xmlurl=null&type={arg_type}&vid={arg_vid}&hd=3&sign={arg_sign}&tmsign={arg_tmsign}".format(\
             ck_base_url = CK_PLAYER_BASE_URL,\
             arg_type = vtype,\
             arg_vid = vid,\
             arg_sign = sign,\
-            arg_tmsign = tmsign,\
-            arg_ulk = ulk)
+            arg_tmsign = tmsign)
+
+        if ulk != None:
+            parse_url = parse_url + '&userlink=' + ulk
 
         print("parse_url:" + parse_url)
 
