@@ -21,7 +21,7 @@ FLASH_HEADER = 'ShockwaveFlash/11.2.999.999'
 
 DILIDILI_DOMAIN_NAME = 'www.dilidili.com'
 DILIDILI_BASE_URL = "http://{0}".format(DILIDILI_DOMAIN_NAME)
-DILIDILI_VEDIO_URL_FORMAT = DILIDILI_BASE_URL + "/watch/{0}/"
+DILIDILI_VEDIO_URL_FORMAT = DILIDILI_BASE_URL + "/{0}/"
 
 CK_PLAYER_DOMAIN_NAME = 'player.005.tv:60000'
 CK_PLAYER_BASE_URL = 'https://{0}'.format(CK_PLAYER_DOMAIN_NAME)
@@ -30,8 +30,8 @@ CK_PLAYER_BASE_URL = 'https://{0}'.format(CK_PLAYER_DOMAIN_NAME)
 COOKIE_HD = '%7B%22letvcloud%22%3A3%2C%22bilibili%22%3A3%2C%22youku%22%3A3%7D'
 
 class DiliPlay(object):
-    def __init__(self, dili_video_id):
-        self.dili_video_url = DILIDILI_VEDIO_URL_FORMAT.format(dili_video_id)
+    def __init__(self, dili_video_path):
+        self.dili_video_url = DILIDILI_VEDIO_URL_FORMAT.format(dili_video_path)
         self.video_urls = []
         self.video_title = None
 
@@ -190,21 +190,13 @@ if __name__ == '__main__':
     [print(arg) for arg in sys.argv]
     raw_dili_video_url = sys.argv[1]
     #logging.basicConfig(format='%(levelname)s: %(message)s', level=logging.DEBUG if args.verbose else logging.INFO)
-    dili_video_id_regex = re.compile(r'[http://]*[www\.]*dilidili\.com/watch/([\d]+)')
-    dili_video_id_regex_match = dili_video_id_regex.search(raw_dili_video_url)
-    dili_video_id = None
+    dili_video_path_regex = re.compile(r'[http://]*[www\.]*dilidili\.com/(watch\d*/[\d]+)')
+    dili_video_path_regex_match = dili_video_path_regex.search(raw_dili_video_url)
+    dili_video_path = None
 
-    if dili_video_id_regex_match != None:
-        dili_video_id = dili_video_id_regex_match.group(1)
-        logging.debug("dili_video_id:" + dili_video_id)
+    if dili_video_path_regex_match != None:
+        dili_video_path = dili_video_path_regex_match.group(1)
+        logging.debug("Video path:" + dili_video_path)
+        DiliPlay(dili_video_path).play()
     else:
-        dili_video_id_regex = re.compile(r'[\d]+')
-        dili_video_id_regex_match = dili_video_id_regex.match(raw_dili_video_url)
-        if dili_video_id_regex_match == None:
-            raise Exception('Wrong video url/id format:' + raw_dili_video_url)
-        else:
-            dili_video_id = dili_video_id_regex_match.group(0)
-
-    #diliplay = DiliPlay(27130)
-    diliplay = DiliPlay(dili_video_id)
-    diliplay.play()
+        raise Exception('Wrong video url format:' + raw_dili_video_url)
