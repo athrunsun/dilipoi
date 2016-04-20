@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 
 # http://stackoverflow.com/questions/16867347/step-by-step-debugging-with-ipython
 # import ipdb; ipdb.set_trace()
