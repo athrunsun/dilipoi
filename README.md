@@ -1,5 +1,7 @@
-# diliplay
-Play [dilidili](http://www.dilidili.com/) videos with mpv.
+# dilipoi
+Play [dilidili](http://www.dilidili.com/) videos with mpv poi!
+
+用mpv播放D站视频poi！
 
 ## Requirements
 * [python](https://www.python.org/) 3
