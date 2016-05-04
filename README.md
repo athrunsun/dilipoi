@@ -6,7 +6,9 @@ Play [dilidili](http://www.dilidili.com/) videos with mpv.
 * [mpv](mpv.io)
 
 ## Usage
+```shell
 ./diliplay.py full_video_url
+```
 
 ## Usage samples
 ```shell
