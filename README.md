@@ -9,11 +9,11 @@ Play [dilidili](http://www.dilidili.com/) videos with mpv poi!
 
 ## Usage
 ```shell
-./diliplay.py full_video_url
+./dilipoi.py full_video_url
 ```
 
 ## Usage samples
 ```shell
-./diliplay.py http://www.dilidili.com/watch/15508/
-./diliplay.py http://www.dilidili.com/watch3/30756/
+./dilipoi.py http://www.dilidili.com/watch/15508/
+./dilipoi.py http://www.dilidili.com/watch3/30756/
 ```
