@@ -57,15 +57,14 @@ class DiliPlay(object):
         regex = re.compile(r'<title>(.+)</title>')
         regex_match = regex.search(r.text)
         self.video_title = regex_match.group(1)
-        print('Extract title:' + self.video_title)
+        logging.info('Extracted title: {0}'.format(self.video_title))
 
         # Extract iframe URL
         regex = re.compile(r'<iframe.*src="([^"]+)"[^>]*></iframe>')
         regex_match = regex.search(r.text)
         iframe_url = regex_match.group(1)
-        print("iframe_url:" + iframe_url)
+        logging.debug('iframe_url: {0}'.format(iframe_url))
         self.iframe_url = iframe_url
-
         return iframe_url
 
     def extract_parse_url_from_iframe_html_content(self):
@@ -81,22 +80,22 @@ class DiliPlay(object):
         }
 
         r = requests.get(self.iframe_url, headers = headers)
-        #print(r.text)
+        logging.debug('iframe html content: {0}'.format(r.text))
         
         vid_regex = re.compile(r'var\s+vid="([^"]+)"')
         vid_regex_match = vid_regex.search(r.text)
         vid = vid_regex_match.group(1)
-        print("vid:" + vid)
+        logging.debug('vid: {0}'.format(vid))
 
         vtype_regex = re.compile(r'var\s+typ="([^"]+)"')
         vtype_regex_match = vtype_regex.search(r.text)
         vtype = vtype_regex_match.group(1)
-        print("type:" + vtype)
+        logging.debug('type: {0}'.format(vtype))
 
         sign_regex = re.compile(r'var\s+sign="([^"]+)"')
         sign_regex_match = sign_regex.search(r.text)
         sign = sign_regex_match.group(1)
-        print("sign:" + sign)
+        logging.debug('sign: {0}'.format(sign))
 
         ulk_regex = re.compile(r'var\s+ulk="([^"]+)"')
         ulk_regex_match = ulk_regex.search(r.text)
@@ -104,22 +103,14 @@ class DiliPlay(object):
 
         if ulk_regex_match != None:
             ulk = ulk_regex_match.group(1)
-            print("ulk:" + ulk)
+            logging.debug('ulk: {0}'.format(ulk))
 
         raw_parse_url_regex = re.compile(r'url=\'(/parse\.php\?.*tmsign=([\w|\d]+))\'.*;')
         raw_parse_url_regex_match = raw_parse_url_regex.search(r.text)
         raw_parse_url = raw_parse_url_regex_match.group(1)
         tmsign = raw_parse_url_regex_match.group(2)
-        print("raw_parse_url:" + raw_parse_url)
-        print("tmsign:" + tmsign)
-
-        # parse_url = "{ck_base_url}/parse.php?xmlurl=null&type={arg_type}&vid={arg_vid}&hd=3&sign={arg_sign}&tmsign={arg_tmsign}&userlink={arg_ulk}".format(\
-        #     ck_base_url = CK_PLAYER_BASE_URL,\
-        #     arg_type = vtype,\
-        #     arg_vid = vid,\
-        #     arg_sign = sign,\
-        #     arg_tmsign = tmsign,\
-        #     arg_ulk = ulk)
+        logging.debug('raw_parse_url: {0}'.format(raw_parse_url))
+        logging.debug('tmsign: {0}'.format(tmsign))
 
         parse_url = "{ck_base_url}/parse.php?xmlurl=null&type={arg_type}&vid={arg_vid}&hd=3&sign={arg_sign}&tmsign={arg_tmsign}".format(\
             ck_base_url = CK_PLAYER_BASE_URL,\
@@ -131,8 +122,7 @@ class DiliPlay(object):
         if ulk != None:
             parse_url = parse_url + '&userlink=' + ulk
 
-        print("parse_url:" + parse_url)
-
+        logging.debug('parse_url: {0}'.format(parse_url))
         return parse_url
 
     def fetch_ckplayer_playlist_and_extract_videos(self, parse_url):
@@ -148,12 +138,12 @@ class DiliPlay(object):
         }
 
         r = requests.get(parse_url, headers = headers)
-        print(r.text)
+        logging.debug('Playlist content: {0}'.format(r.text))
         playlist_xml_tree = ET.fromstring(r.text)
 
         for video_element in playlist_xml_tree.findall(".//video"):
             video_url = video_element.find("./file").text
-            print("video_url:" + video_url)
+            logging.debug('video_url: {0}'.format(video_url))
             self.video_urls.append(video_url)
 
     def launch_mpv(self):
@@ -184,18 +174,25 @@ class DiliPlay(object):
         
         return player_process.returncode
 
+class MyArgumentFormatter(argparse.HelpFormatter):
+    def _split_lines(self, text, width):
+        '''Patch the default argparse.HelpFormatter so that '\\n' is correctly handled
+        '''
+        return [i for line in text.splitlines() for i in argparse.HelpFormatter._split_lines(self, line, width)]
 
 if __name__ == '__main__':
-    [print(arg) for arg in sys.argv]
+    #[print(arg) for arg in sys.argv]
+    parser = argparse.ArgumentParser(formatter_class=MyArgumentFormatter)
+    parser.add_argument('-d', '--debug', action='store_true', help='Stop execution immediately when an error occures')
     raw_dili_video_url = sys.argv[1]
-    #logging.basicConfig(format='%(levelname)s: %(message)s', level=logging.DEBUG if args.verbose else logging.INFO)
+    logging.basicConfig(format='%(levelname)s: %(message)s', level=logging.DEBUG if args.verbose else logging.INFO)
     dili_video_path_regex = re.compile(r'[http://]*[www\.]*dilidili\.com/(watch\d*/[\d]+)')
     dili_video_path_regex_match = dili_video_path_regex.search(raw_dili_video_url)
     dili_video_path = None
 
     if dili_video_path_regex_match != None:
         dili_video_path = dili_video_path_regex_match.group(1)
-        logging.debug("Video path:" + dili_video_path)
+        logging.debug('Video path: {0}'.format(dili_video_path))
         DiliPlay(dili_video_path).play()
     else:
-        raise Exception('Wrong video url format:' + raw_dili_video_url)
+        raise Exception('Wrong video url format: {0}'.format(raw_dili_video_url))
