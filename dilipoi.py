@@ -7,7 +7,7 @@ import sys
 if sys.version_info < (3, 0):
     sys.stderr.write('ERROR: Python 3.0 or newer version is required.\n')
     sys.exit(1)
-#import argparse
+import argparse
 import requests
 import json
 import re
@@ -15,29 +15,36 @@ import logging
 import subprocess
 import xml.etree.ElementTree as ET
 
-USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Ubuntu Chromium/47.0.2526.106 Chrome/47.0.2526.106 Safari/537.36'
-FLASH_HEADER = 'ShockwaveFlash/11.2.999.999'
+USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/51.0.2704.106 Safari/537.36'
+FLASH_HEADER = 'ShockwaveFlash/22.0.0.209'
 
 DILIDILI_DOMAIN_NAME = 'www.dilidili.com'
 DILIDILI_BASE_URL = "http://{0}".format(DILIDILI_DOMAIN_NAME)
 DILIDILI_VEDIO_URL_FORMAT = DILIDILI_BASE_URL + "/{0}/"
 
-CK_PLAYER_DOMAIN_NAME = 'player.005.tv:60000'
+CK_PLAYER_DOMAIN_NAME = 'player.xcmh.cc:60000'
 CK_PLAYER_BASE_URL = 'https://{0}'.format(CK_PLAYER_DOMAIN_NAME)
 
 # {"letvcloud":3,"bilibili":3,"youku":3}
 COOKIE_HD = '%7B%22letvcloud%22%3A3%2C%22bilibili%22%3A3%2C%22youku%22%3A3%7D'
 
-class DiliPlay(object):
+class DiliPoi(object):
     def __init__(self, dili_video_path):
         self.dili_video_url = DILIDILI_VEDIO_URL_FORMAT.format(dili_video_path)
-        self.video_urls = []
-        self.video_title = None
 
     def play(self):
-        self.extract_iframe_url()
-        self.fetch_ckplayer_playlist_and_extract_videos(self.extract_parse_url_from_iframe_html_content())
-        self.launch_mpv()
+        iframe_url, video_title = self.extract_iframe_url()
+        parse_url, video_type = self.extract_parse_url_from_iframe_html_content(iframe_url)
+        video_urls = None
+
+        if video_type == 'acku':
+            video_urls = self.fetch_xml_playlist_and_extract_videos(iframe_url, parse_url)
+        elif video_type == 'yun':
+            video_urls = self.fetch_m3u8_playlist(iframe_url, parse_url)
+        else:
+            raise Exception('Not implemented for video type: {0}'.format(video_type))
+        
+        self.launch_mpv(video_type, video_title, video_urls)
 
     def extract_iframe_url(self):
         headers = {
@@ -56,18 +63,17 @@ class DiliPlay(object):
         # Extract title
         regex = re.compile(r'<title>(.+)</title>')
         regex_match = regex.search(r.text)
-        self.video_title = regex_match.group(1)
-        logging.info('Extracted title: {0}'.format(self.video_title))
+        video_title = regex_match.group(1)
+        logging.info('Extracted title: {0}'.format(video_title))
 
         # Extract iframe URL
         regex = re.compile(r'<iframe.*src="([^"]+)"[^>]*></iframe>')
         regex_match = regex.search(r.text)
         iframe_url = regex_match.group(1)
         logging.debug('iframe_url: {0}'.format(iframe_url))
-        self.iframe_url = iframe_url
-        return iframe_url
+        return (iframe_url, video_title)
 
-    def extract_parse_url_from_iframe_html_content(self):
+    def extract_parse_url_from_iframe_html_content(self, iframe_url):
         headers = {
             'User-Agent': USER_AGENT, 
             'Referer': self.dili_video_url, 
@@ -79,8 +85,8 @@ class DiliPlay(object):
             'Cookie': 'hd=' + COOKIE_HD
         }
 
-        r = requests.get(self.iframe_url, headers = headers)
-        logging.debug('iframe html content: {0}'.format(r.text))
+        r = requests.get(iframe_url, headers = headers)
+        #logging.debug('iframe html content: {0}'.format(r.text))
         
         vid_regex = re.compile(r'var\s+vid="([^"]+)"')
         vid_regex_match = vid_regex.search(r.text)
@@ -122,17 +128,20 @@ class DiliPlay(object):
         if ulk != None:
             parse_url = parse_url + '&userlink=' + ulk
 
-        logging.debug('parse_url: {0}'.format(parse_url))
-        return parse_url
+        if vtype == 'yun':
+            parse_url = parse_url + '&lm=1'
 
-    def fetch_ckplayer_playlist_and_extract_videos(self, parse_url):
+        logging.debug('parse_url: {0}'.format(parse_url))
+        return (parse_url, vtype)
+
+    def fetch_xml_playlist_and_extract_videos(self, iframe_url, parse_url):
         headers = {
             'Host': CK_PLAYER_DOMAIN_NAME,
             'Connection': 'keep-alive',
             'X-Requested-With': FLASH_HEADER,
             'User-Agent': USER_AGENT,
             'Accept': '*/*',
-            'Referer': self.iframe_url,
+            'Referer': iframe_url,
             'Accept-Encoding': 'gzip, deflate, sdch',
             'Accept-Language': 'zh-CN,zh;q=0.8,en-US;q=0.6,en;q=0.4'
         }
@@ -140,21 +149,48 @@ class DiliPlay(object):
         r = requests.get(parse_url, headers = headers)
         logging.debug('Playlist content: {0}'.format(r.text))
         playlist_xml_tree = ET.fromstring(r.text)
+        video_urls = []
 
         for video_element in playlist_xml_tree.findall(".//video"):
             video_url = video_element.find("./file").text
             logging.debug('video_url: {0}'.format(video_url))
-            self.video_urls.append(video_url)
+            video_urls.append(video_url)
 
-    def launch_mpv(self):
+        return video_urls
+
+    # For some videos, a m3u8 playlist will be returned after 2 redirects.
+    def fetch_m3u8_playlist(self, iframe_url, parse_url):
+        headers = {
+            'Host': CK_PLAYER_DOMAIN_NAME,
+            'Connection': 'keep-alive',
+            'X-Requested-With': FLASH_HEADER,
+            'User-Agent': USER_AGENT,
+            'Accept': '*/*',
+            'Referer': iframe_url,
+            'Accept-Encoding': 'gzip, deflate, sdch',
+            'Accept-Language': 'zh-CN,zh;q=0.8,en-US;q=0.6,en;q=0.4'
+        }
+
+        # For history and redirection, refer to:
+        # http://docs.python-requests.org/en/master/user/quickstart/#redirection-and-history
+        r = requests.get(parse_url, headers = headers)
+        logging.debug('video_url: {0}'.format(r.url))
+        
+        return r.url
+
+    def launch_mpv(self, video_type, video_title, video_urls):
         command_line = ['mpv', '--http-header-fields', 'User-Agent: ' + USER_AGENT]
-        command_line += ['--force-media-title', self.video_title]
+        command_line += ['--force-media-title', video_title]
+        
+        if video_type == 'acku':
+            if len(video_urls) > 1:
+                command_line += ['--merge-files']
+            command_line += ['--']
+            command_line += video_urls
+        elif video_type == 'yun':
+            command_line.append(video_urls)
 
-        if len(self.video_urls) > 1:
-            command_line += ['--merge-files']
-
-        command_line += ['--']
-        command_line += self.video_urls
+        log_command(command_line)
         player_process = subprocess.Popen(command_line)
 
         try:
@@ -174,6 +210,11 @@ class DiliPlay(object):
         
         return player_process.returncode
 
+def log_command(command_line):
+    '''Log the command line to be executed, escaping correctly
+    '''
+    logging.debug('Executing: '+' '.join('\''+i+'\'' if ' ' in i or '?' in i or '&' in i or '"' in i else i for i in command_line))
+
 class MyArgumentFormatter(argparse.HelpFormatter):
     def _split_lines(self, text, width):
         '''Patch the default argparse.HelpFormatter so that '\\n' is correctly handled
@@ -181,10 +222,13 @@ class MyArgumentFormatter(argparse.HelpFormatter):
         return [i for line in text.splitlines() for i in argparse.HelpFormatter._split_lines(self, line, width)]
 
 if __name__ == '__main__':
-    #[print(arg) for arg in sys.argv]
+    if len(sys.argv) == 1:
+        sys.argv.append('--help')
     parser = argparse.ArgumentParser(formatter_class=MyArgumentFormatter)
-    parser.add_argument('-d', '--debug', action='store_true', help='Stop execution immediately when an error occures')
-    raw_dili_video_url = sys.argv[1]
+    parser.add_argument('-v', '--verbose', action='store_true', help='Print more debugging information')
+    parser.add_argument('url', metavar='URL', help='Dilidili video page URL (http://www.dilidili.com/watch*/**/)')
+    args = parser.parse_args()
+    raw_dili_video_url = args.url
     logging.basicConfig(format='%(levelname)s: %(message)s', level=logging.DEBUG if args.verbose else logging.INFO)
     dili_video_path_regex = re.compile(r'[http://]*[www\.]*dilidili\.com/(watch\d*/[\d]+)')
     dili_video_path_regex_match = dili_video_path_regex.search(raw_dili_video_url)
@@ -193,6 +237,6 @@ if __name__ == '__main__':
     if dili_video_path_regex_match != None:
         dili_video_path = dili_video_path_regex_match.group(1)
         logging.debug('Video path: {0}'.format(dili_video_path))
-        DiliPlay(dili_video_path).play()
+        DiliPoi(dili_video_path).play()
     else:
-        raise Exception('Wrong video url format: {0}'.format(raw_dili_video_url))
+        raise Exception('Malformed video url: {0}'.format(raw_dili_video_url))
