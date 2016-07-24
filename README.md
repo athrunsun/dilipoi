@@ -12,8 +12,14 @@ Play [dilidili](http://www.dilidili.com/) videos with mpv poi!
 ./dilipoi.py full_video_url
 ```
 
+Verbose mode (more logging information)
+```shell
+./dilipoi.py -v full_video_url
+```
+
 ## Usage samples
 ```shell
 ./dilipoi.py http://www.dilidili.com/watch/15508/
 ./dilipoi.py http://www.dilidili.com/watch3/30756/
+./dilipoi.py -v http://www.dilidili.com/watch3/43701/
 ```
