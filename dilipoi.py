@@ -37,12 +37,12 @@ class DiliPoi(object):
         parse_url, video_type = self.extract_parse_url_from_iframe_html_content(iframe_url)
         video_urls = None
 
-        if video_type == 'acku':
-            video_urls = self.fetch_xml_playlist_and_extract_videos(iframe_url, parse_url)
-        elif video_type == 'yun':
+        if video_type == 'yun':
             video_urls = self.fetch_m3u8_playlist(iframe_url, parse_url)
         else:
-            raise Exception('Not implemented for video type: {0}'.format(video_type))
+            video_urls = self.fetch_xml_playlist_and_extract_videos(iframe_url, parse_url)
+        #else:
+        #    raise Exception('Not implemented for video type: {0}'.format(video_type))
         
         self.launch_mpv(video_type, video_title, video_urls)
 
@@ -182,13 +182,13 @@ class DiliPoi(object):
         command_line = ['mpv', '--http-header-fields', 'User-Agent: ' + USER_AGENT]
         command_line += ['--force-media-title', video_title]
         
-        if video_type == 'acku':
+        if video_type == 'yun':
+            command_line.append(video_urls)
+        else:
             if len(video_urls) > 1:
                 command_line += ['--merge-files']
             command_line += ['--']
             command_line += video_urls
-        elif video_type == 'yun':
-            command_line.append(video_urls)
 
         log_command(command_line)
         player_process = subprocess.Popen(command_line)
