@@ -9,6 +9,7 @@ if sys.version_info < (3, 0):
     sys.exit(1)
 import argparse
 import requests
+import urllib
 import json
 import re
 import logging
@@ -57,18 +58,19 @@ class DiliPoi(object):
             'Accept-Language': 'zh-CN,zh;q=0.8,en-US;q=0.6,en;q=0.4'
         }
 
-        r = requests.get(self.dili_video_url, headers=headers)
-        r.encoding = 'utf-8'
+        response = requests.get(self.dili_video_url, headers=headers)
+        response.encoding = 'utf-8'
+        response_body = response.text
         
         # Extract title
         regex = re.compile(r'<title>(.+)</title>')
-        regex_match = regex.search(r.text)
+        regex_match = regex.search(response_body)
         video_title = regex_match.group(1)
         logging.info('Extracted title: {0}'.format(video_title))
 
         # Extract iframe URL
         regex = re.compile(r'<iframe.*src="([^"]+)"[^>]*></iframe>')
-        regex_match = regex.search(r.text)
+        regex_match = regex.search(response_body)
         iframe_url = regex_match.group(1)
         logging.debug('iframe_url: {0}'.format(iframe_url))
         return (iframe_url, video_title)
@@ -85,26 +87,27 @@ class DiliPoi(object):
             'Cookie': 'hd=' + COOKIE_HD
         }
 
-        r = requests.get(iframe_url, headers = headers)
-        #logging.debug('iframe html content: {0}'.format(r.text))
+        response = requests.get(iframe_url, headers=headers)
+        response_body = response.text
+        #logging.debug('iframe html content: {0}'.format(response_body))
         
         vid_regex = re.compile(r'var\s+vid="([^"]+)"')
-        vid_regex_match = vid_regex.search(r.text)
+        vid_regex_match = vid_regex.search(response_body)
         vid = vid_regex_match.group(1)
         logging.debug('vid: {0}'.format(vid))
 
         vtype_regex = re.compile(r'var\s+typ="([^"]+)"')
-        vtype_regex_match = vtype_regex.search(r.text)
+        vtype_regex_match = vtype_regex.search(response_body)
         vtype = vtype_regex_match.group(1)
         logging.debug('type: {0}'.format(vtype))
 
         sign_regex = re.compile(r'var\s+sign="([^"]+)"')
-        sign_regex_match = sign_regex.search(r.text)
+        sign_regex_match = sign_regex.search(response_body)
         sign = sign_regex_match.group(1)
         logging.debug('sign: {0}'.format(sign))
 
         ulk_regex = re.compile(r'var\s+ulk="([^"]+)"')
-        ulk_regex_match = ulk_regex.search(r.text)
+        ulk_regex_match = ulk_regex.search(response_body)
         ulk = None
 
         if ulk_regex_match != None:
@@ -112,7 +115,7 @@ class DiliPoi(object):
             logging.debug('ulk: {0}'.format(ulk))
 
         raw_parse_url_regex = re.compile(r'url=\'(/parse\.php\?.*tmsign=([\w|\d]+))\'.*;')
-        raw_parse_url_regex_match = raw_parse_url_regex.search(r.text)
+        raw_parse_url_regex_match = raw_parse_url_regex.search(response_body)
         raw_parse_url = raw_parse_url_regex_match.group(1)
         tmsign = raw_parse_url_regex_match.group(2)
         logging.debug('raw_parse_url: {0}'.format(raw_parse_url))
@@ -146,20 +149,25 @@ class DiliPoi(object):
             'Accept-Language': 'zh-CN,zh;q=0.8,en-US;q=0.6,en;q=0.4'
         }
 
-        r = requests.get(parse_url, headers = headers)
-        logging.debug('Playlist content: {0}'.format(r.text))
-        playlist_xml_tree = ET.fromstring(r.text)
+        response = requests.get(parse_url, headers=headers)
+        response_body = response.text
+        logging.debug('Playlist content: {0}'.format(response_body))
+        playlist_xml_tree = ET.fromstring(response_body)
         video_urls = []
 
         for video_element in playlist_xml_tree.findall(".//video"):
             video_url = video_element.find("./file").text
-            logging.debug('video_url: {0}'.format(video_url))
+            logging.debug('Video url: {0}'.format(video_url))
             video_urls.append(video_url)
 
         return video_urls
 
-    # For some videos, a m3u8 playlist will be returned after 2 redirects.
-    def fetch_m3u8_playlist(self, iframe_url, parse_url):
+    def fetch_m3u8_playlist(self, iframe_url, parse_url, expose_playlist=False):
+        """
+        For some videos, a m3u8 playlist will be returned after 2 redirects.
+        Exposing playlist may result in bad playing experience since files
+        in playlist might have a extreme short duration (e.g. 2s).
+        """
         headers = {
             'Host': CK_PLAYER_DOMAIN_NAME,
             'Connection': 'keep-alive',
@@ -173,22 +181,57 @@ class DiliPoi(object):
 
         # For history and redirection, refer to:
         # http://docs.python-requests.org/en/master/user/quickstart/#redirection-and-history
-        r = requests.get(parse_url, headers = headers)
-        logging.debug('video_url: {0}'.format(r.url))
+        response = requests.get(parse_url, headers=headers)
+        playlist_content_url = response.url
+        logging.debug('Playlist url: {0}'.format(playlist_content_url))
+
+        if expose_playlist:
+            return self.expose_m3u8_playlist(playlist_content_url)
+        else:
+            return playlist_content_url
+
+    def expose_m3u8_playlist(self, playlist_content_url):
+        url_obj = urllib.parse.urlparse(playlist_content_url)
+        logging.debug('Playlist url host: {0}'.format(url_obj.netloc))
+
+        playlist_content_request_headers = {
+            'Host': url_obj.netloc,
+            'Connection': 'keep-alive',
+            'X-Requested-With': FLASH_HEADER,
+            'User-Agent': USER_AGENT,
+            'Accept': '*/*',
+            'Accept-Encoding': 'gzip, deflate, sdch',
+            'Accept-Language': 'zh-CN,zh;q=0.8,en-US;q=0.6,en;q=0.4'
+        }
+
+        response = requests.get(playlist_content_url, headers=playlist_content_request_headers)
+        playlist_content = response.text
         
-        return r.url
+        video_urls = []
+        playlist_lines = playlist_content.splitlines()
+
+        for line in playlist_lines:
+            if not line.startswith('#'):
+                #logging.debug('Playlist item: {0}'.format(line))
+                video_urls.append(line)
+
+        return video_urls
 
     def launch_mpv(self, video_type, video_title, video_urls):
         command_line = ['mpv', '--http-header-fields', 'User-Agent: ' + USER_AGENT]
         command_line += ['--force-media-title', video_title]
+        command_line += ['--title', video_title]
         
-        if video_type == 'yun':
-            command_line.append(video_urls)
-        else:
+        if isinstance(video_urls, str):
+           command_line.append(video_urls)
+        elif isinstance(video_urls, list):
             if len(video_urls) > 1:
                 command_line += ['--merge-files']
             command_line += ['--']
             command_line += video_urls
+        else:
+            raise Exception('Not implemented for video urls of type: {0}'.format(
+                type(video_urls).__name__))
 
         log_command(command_line)
         player_process = subprocess.Popen(command_line)
