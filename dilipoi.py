@@ -33,18 +33,20 @@ class DiliPoi(object):
     def __init__(self, dili_video_path):
         self.dili_video_url = DILIDILI_VEDIO_URL_FORMAT.format(dili_video_path)
 
-    def play(self):
+    def prepare_to_play(self):
         iframe_url, video_title = self.extract_iframe_url()
         parse_url, video_type = self.extract_parse_url_from_iframe_html_content(iframe_url)
         video_urls = None
-
         if video_type == 'yun':
             video_urls = self.fetch_m3u8_playlist(iframe_url, parse_url)
         else:
             video_urls = self.fetch_xml_playlist_and_extract_videos(iframe_url, parse_url)
         #else:
         #    raise Exception('Not implemented for video type: {0}'.format(video_type))
-        
+        return video_type, video_title, video_urls
+
+    def play(self):
+        video_type, video_title, video_urls = self.prepare_to_play()
         self.launch_mpv(video_type, video_title, video_urls)
 
     def extract_iframe_url(self):
@@ -59,21 +61,27 @@ class DiliPoi(object):
         }
 
         response = requests.get(self.dili_video_url, headers=headers)
+        if response.status_code != 200:
+            raise Exception('Did NOT get 200 response from video url! Actual response code:' + str(response.status_code))
         response.encoding = 'utf-8'
         response_body = response.text
         
         # Extract title
         regex = re.compile(r'<title>(.+)</title>')
         regex_match = regex.search(response_body)
+        if regex_match is None:
+            raise Exception('No matching title found')
         video_title = regex_match.group(1)
         logging.info('Extracted title: {0}'.format(video_title))
 
         # Extract iframe URL
         regex = re.compile(r'<iframe.*src="([^"]+)"[^>]*></iframe>')
         regex_match = regex.search(response_body)
+        if regex_match is None:
+            raise Exception('No matching iframe url found')
         iframe_url = regex_match.group(1)
         logging.debug('iframe_url: {0}'.format(iframe_url))
-        return (iframe_url, video_title)
+        return iframe_url, video_title
 
     def extract_parse_url_from_iframe_html_content(self, iframe_url):
         headers = {
@@ -93,16 +101,22 @@ class DiliPoi(object):
         
         vid_regex = re.compile(r'var\s+vid="([^"]+)"')
         vid_regex_match = vid_regex.search(response_body)
+        if vid_regex_match is None:
+            raise Exception('No matching video id found')
         vid = vid_regex_match.group(1)
         logging.debug('vid: {0}'.format(vid))
 
         vtype_regex = re.compile(r'var\s+typ="([^"]+)"')
         vtype_regex_match = vtype_regex.search(response_body)
+        if vtype_regex_match is None:
+            raise Exception('No matching video type found')
         vtype = vtype_regex_match.group(1)
         logging.debug('type: {0}'.format(vtype))
 
         sign_regex = re.compile(r'var\s+sign="([^"]+)"')
         sign_regex_match = sign_regex.search(response_body)
+        if sign_regex_match is None:
+            raise Exception('No matching sign found')
         sign = sign_regex_match.group(1)
         logging.debug('sign: {0}'.format(sign))
 
@@ -116,6 +130,8 @@ class DiliPoi(object):
 
         raw_parse_url_regex = re.compile(r'url=\'(/parse\.php\?.*tmsign=([\w|\d]+))\'.*;')
         raw_parse_url_regex_match = raw_parse_url_regex.search(response_body)
+        if raw_parse_url_regex_match is None:
+            raise Exception('No matching raw parse url found')
         raw_parse_url = raw_parse_url_regex_match.group(1)
         tmsign = raw_parse_url_regex_match.group(2)
         logging.debug('raw_parse_url: {0}'.format(raw_parse_url))
@@ -135,7 +151,7 @@ class DiliPoi(object):
             parse_url = parse_url + '&lm=1'
 
         logging.debug('parse_url: {0}'.format(parse_url))
-        return (parse_url, vtype)
+        return parse_url, vtype
 
     def fetch_xml_playlist_and_extract_videos(self, iframe_url, parse_url):
         headers = {
@@ -273,6 +289,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
     raw_dili_video_url = args.url
     logging.basicConfig(format='%(levelname)s: %(message)s', level=logging.DEBUG if args.verbose else logging.INFO)
+    # Do a regular expression check and re-compose video url later during class initialization,
+    # otherwise we don't know if the video url is in a format that we can handle.
     dili_video_path_regex = re.compile(r'[http://]*[www\.]*dilidili\.com/(watch\d*/[\d]+)')
     dili_video_path_regex_match = dili_video_path_regex.search(raw_dili_video_url)
     dili_video_path = None
