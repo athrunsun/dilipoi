@@ -7,21 +7,18 @@ class TestDilipoi():
         """
         Test an old bangumi, 寒蝉鸣泣之时OVA 第01话 羞晒篇
         """
-        #logging.info('-----Start testing for "寒蝉鸣泣之时OVA 第01话 羞晒篇, http://www.dilidili.com/watch/15508/"-----')
         yield self.prepare_to_play_bangumi, '-----Start testing for "寒蝉鸣泣之时OVA 第01话 羞晒篇, http://www.dilidili.com/watch/15508/"-----', 'watch/15508/'
 
     def test_prepare_to_play_new_bangumi_1(self):
         """
         Test a new bangumi, 双星之阴阳师 第1话 命中注定的两人
         """
-        #logging.info('-----Start testing for "双星之阴阳师 第1话 命中注定的两人, http://www.dilidili.com/watch3/30756/"-----')
         yield self.prepare_to_play_bangumi, '-----Start testing for "双星之阴阳师 第1话 命中注定的两人, http://www.dilidili.com/watch3/30756/"-----', 'watch3/30756/'
 
     def test_prepare_to_play_new_bangumi_2(self):
         """
         Test a new bangumi, 美少女战士crystal 死亡毁灭者篇 第13话 无限大 启程
         """
-        #logging.info('-----Start testing for "美少女战士crystal 死亡毁灭者篇 第13话 无限大 启程, http://www.dilidili.com/watch3/43701/"-----')
         yield self.prepare_to_play_bangumi, '-----Start testing for "美少女战士crystal 死亡毁灭者篇 第13话 无限大 启程, http://www.dilidili.com/watch3/43701/"-----', 'watch3/43701/'
 
     def prepare_to_play_bangumi(self, test_case_title, dili_video_url):
