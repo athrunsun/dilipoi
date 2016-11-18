@@ -1,6 +1,3 @@
-# http://stackoverflow.com/questions/16867347/step-by-step-debugging-with-ipython
-# import ipdb; ipdb.set_trace()
-
 import sys
 if sys.version_info < (3, 0):
     sys.stderr.write('ERROR: Python 3.0 or newer version is required.\n')
@@ -13,6 +10,7 @@ import re
 import logging
 import subprocess
 import xml.etree.ElementTree as ET
+from enum import Enum
 
 USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/51.0.2704.106 Safari/537.36'
 FLASH_HEADER = 'ShockwaveFlash/22.0.0.209'
@@ -21,31 +19,31 @@ DILIDILI_DOMAIN_NAME = 'www.dilidili.com'
 DILIDILI_BASE_URL = "http://{0}".format(DILIDILI_DOMAIN_NAME)
 DILIDILI_VEDIO_URL_FORMAT = DILIDILI_BASE_URL + "/{0}/"
 
-CK_PLAYER_DOMAIN_NAME = 'player.xcmh.cc:60000'
-CK_PLAYER_BASE_URL = 'https://{0}'.format(CK_PLAYER_DOMAIN_NAME)
-
 # {"letvcloud":3,"bilibili":3,"youku":3}
 COOKIE_HD = '%7B%22letvcloud%22%3A3%2C%22bilibili%22%3A3%2C%22youku%22%3A3%7D'
+
+class VideoType(Enum):
+    yun = 'yun'
 
 class DiliPoi(object):
     def __init__(self, dili_video_path):
         self.dili_video_url = DILIDILI_VEDIO_URL_FORMAT.format(dili_video_path)
 
+    def play(self):
+        video_type, video_title, video_urls = self.prepare_to_play()
+        self.launch_mpv(video_type, video_title, video_urls)
+
     def prepare_to_play(self):
         iframe_url, video_title = self.extract_iframe_url()
         parse_url, video_type = self.extract_parse_url_from_iframe_html_content(iframe_url)
         video_urls = None
-        if video_type == 'yun':
+        if video_type == VideoType.yun:
             video_urls = self.fetch_m3u8_playlist(iframe_url, parse_url)
         else:
             video_urls = self.fetch_xml_playlist_and_extract_videos(iframe_url, parse_url)
         #else:
         #    raise Exception('Not implemented for video type: {0}'.format(video_type))
         return video_type, video_title, video_urls
-
-    def play(self):
-        video_type, video_title, video_urls = self.prepare_to_play()
-        self.launch_mpv(video_type, video_title, video_urls)
 
     def extract_iframe_url(self):
         headers = {
@@ -85,7 +83,7 @@ class DiliPoi(object):
         headers = {
             'User-Agent': USER_AGENT, 
             'Referer': self.dili_video_url, 
-            'Host': CK_PLAYER_DOMAIN_NAME,
+            'Host': urllib.parse.urlparse(iframe_url).netloc,
             'Connection': 'keep-alive',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
             'Accept-Encoding': 'gzip, deflate, sdch',
@@ -94,7 +92,13 @@ class DiliPoi(object):
         }
 
         response = requests.get(iframe_url, headers=headers)
-        response_body = response.text
+        parse_url, vtype = self.compose_parse_url(iframe_url, response)
+        logging.debug('parse_url: {0}'.format(parse_url))
+        logging.debug('vtype: {0}'.format(vtype))
+        return parse_url, vtype
+    
+    def compose_parse_url(self, iframe_url, iframe_url_response):
+        response_body = iframe_url_response.text
         #logging.debug('iframe html content: {0}'.format(response_body))
         
         vid_regex = re.compile(r'var\s+vid="([^"]+)"')
@@ -136,7 +140,7 @@ class DiliPoi(object):
         logging.debug('tmsign: {0}'.format(tmsign))
 
         parse_url = "{ck_base_url}/parse.php?xmlurl=null&type={arg_type}&vid={arg_vid}&hd=3&sign={arg_sign}&tmsign={arg_tmsign}".format(\
-            ck_base_url = CK_PLAYER_BASE_URL,\
+            ck_base_url = 'https://' + urllib.parse.urlparse(iframe_url).netloc,\
             arg_type = vtype,\
             arg_vid = vid,\
             arg_sign = sign,\
@@ -144,16 +148,14 @@ class DiliPoi(object):
 
         if ulk != None:
             parse_url = parse_url + '&userlink=' + ulk
-
         if vtype == 'yun':
             parse_url = parse_url + '&lm=1'
-
-        logging.debug('parse_url: {0}'.format(parse_url))
+            vtype = VideoType.yun
         return parse_url, vtype
 
     def fetch_xml_playlist_and_extract_videos(self, iframe_url, parse_url):
         headers = {
-            'Host': CK_PLAYER_DOMAIN_NAME,
+            'Host': urllib.parse.urlparse(iframe_url).netloc,
             'Connection': 'keep-alive',
             'X-Requested-With': FLASH_HEADER,
             'User-Agent': USER_AGENT,
@@ -183,7 +185,7 @@ class DiliPoi(object):
         in playlist might have a extreme short duration (e.g. 2s).
         """
         headers = {
-            'Host': CK_PLAYER_DOMAIN_NAME,
+            'Host': urllib.parse.urlparse(iframe_url).netloc,
             'Connection': 'keep-alive',
             'X-Requested-With': FLASH_HEADER,
             'User-Agent': USER_AGENT,
