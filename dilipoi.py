@@ -15,9 +15,9 @@ from enum import Enum
 USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/51.0.2704.106 Safari/537.36'
 FLASH_HEADER = 'ShockwaveFlash/22.0.0.209'
 
-DILIDILI_DOMAIN_NAME = 'www.dilidili.com'
+DILIDILI_DOMAIN_NAME = 'www.dilidili.wang'
 DILIDILI_BASE_URL = "http://{0}".format(DILIDILI_DOMAIN_NAME)
-DILIDILI_VEDIO_URL_FORMAT = DILIDILI_BASE_URL + "/{0}/"
+DILIDILI_VEDIO_URL_FORMAT = DILIDILI_BASE_URL + "/{0}"
 
 # {"letvcloud":3,"bilibili":3,"youku":3}
 COOKIE_HD = '%7B%22letvcloud%22%3A3%2C%22bilibili%22%3A3%2C%22youku%22%3A3%7D'
@@ -39,8 +39,12 @@ class DiliPoi(object):
         video_urls = None
         if video_type == VideoType.yun:
             video_urls = self.fetch_m3u8_playlist(iframe_url, parse_url)
+            if video_urls is None or video_urls == '':
+                raise Exception('video_urls is empty!')
         else:
             video_urls = self.fetch_xml_playlist_and_extract_videos(iframe_url, parse_url)
+            if len(video_urls) == 0:
+                raise Exception('video_urls is empty!')
         #else:
         #    raise Exception('Not implemented for video type: {0}'.format(video_type))
         return video_type, video_title, video_urls
@@ -58,7 +62,7 @@ class DiliPoi(object):
 
         response = requests.get(self.dili_video_url, headers=headers)
         if response.status_code != 200:
-            raise Exception('Did NOT get 200 response from video url! Actual response code:' + str(response.status_code))
+            raise Exception("Did NOT get 200 response from video url '{0}'! Actual response code: {1}".format(self.dili_video_url, str(response.status_code)))
         response.encoding = 'utf-8'
         response_body = response.text
         
